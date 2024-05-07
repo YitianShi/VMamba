@@ -1,0 +1,265 @@
+---
+name: "DEFAULT"
+path: "results"
+repetitions: 5
+reps_per_job: 1
+reps_in_parallel: 1
+
+# Train: 50000 datapoints
+
+params:
+  batch_size: 128
+  data_path: "../../data/"
+  epochs: 300
+  use_amp: False
+  eval_samples: 50
+  ece_bins: 10
+  disable_wandb: False
+  seed_offset: 0
+  eval_batch_size: 512
+  share_file_system: False
+  lr_schedule: True
+  use_checkpoint: None
+
+---
+name: "MAP"
+params:
+  model: "map"
+  members: 1
+  lr: 0.05 # lr scheduler...
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003
+    momentum: 0.9
+    nesterov: True
+
+---
+name: "DeepEnsemble"
+params:
+  model: "map"
+  members: 5
+  lr: 0.05 # lr scheduler...
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003
+    momentum: 0.9
+    nesterov: True
+
+---
+name: "SWAG"
+params:
+  model: "swag"
+  members: 1
+  lr: 0.05 # lr scheduler...
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003
+    momentum: 0.9
+    nesterov: True
+  swag:
+    deviation_samples: 30
+    start_epoch: 250
+    update_interval: 390
+    # lr: 0.0005
+
+---
+name: "MultiSWAG"
+params:
+  model: "swag"
+  members: 5
+  lr: 0.05 # lr scheduler...
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003
+    momentum: 0.9
+    nesterov: True
+  swag:
+    deviation_samples: 30
+    start_epoch: 250
+    lr: 0.0005
+
+---
+name: "MCD"
+params:
+  model: "mcd"
+  members: 1
+  lr: 0.05 # lr scheduler...
+  p: 0.1
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003
+    momentum: 0.9
+    nesterov: True
+
+---
+name: "MultiMCD"
+params:
+  model: "mcd"
+  members: 5
+  lr: 0.05 # lr scheduler...
+  p: 0.1
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003
+    momentum: 0.9
+    nesterov: True
+
+---
+name: "BBB"
+params:
+  model: "bbb"
+  members: 1
+  prior_std: 1.0
+  lr: 0.005
+  base_optimizer:
+    lr: 0.005
+    weight_decay: 0.0
+    momentum: 0.9
+    nesterov: True
+  bbb:
+    mc_samples: 2
+    kl_rescaling: 0.2
+    dataset_size: 50000
+
+---
+name: "MultiBBB"
+params:
+  model: "bbb"
+  members: 5
+  prior_std: 1.0
+  lr: 0.05
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0
+    momentum: 0.9
+    nesterov: True
+  bbb:
+    mc_samples: 2
+    kl_rescaling: 0.2
+    dataset_size: 50000
+
+---
+name: "iVON"
+params:
+  model: "ivon"
+  members: 1
+  lr: 0.05
+  lr_schedule: False
+  eval_while_train: False
+  move_model: True
+  ivon:
+    lr: 0.0001
+    prior_prec: 50
+    damping: 0.001
+    augmentation: 10
+    mc_samples: 2
+    dataset_size: 50000
+
+---
+name: "MultiiVON"
+params:
+  model: "ivon"
+  members: 5
+  lr: 0.05
+  lr_schedule: False
+  eval_while_train: False
+  move_model: True
+  ivon:
+    lr: 0.0001
+    prior_prec: 50
+    damping: 0.001
+    augmentation: 10
+    mc_samples: 2
+    dataset_size: 50000
+
+---
+name: "Laplace"
+params:
+  model: "laplace"
+  members: 1
+  eval_while_train: False
+  lr: 0.05 # lr scheduler...
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003
+    momentum: 0.9
+    nesterov: True
+
+---
+name: "MultiLaplace"
+params:
+  model: "laplace"
+  members: 5
+  eval_while_train: False
+  lr: 0.05 # lr scheduler...
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003
+    momentum: 0.9
+    nesterov: True
+
+---
+name: "SVGD"
+params:
+  model: "svgd"
+  members: 1
+  eval_while_train: False
+  lr: 0.05 # lr scheduler...
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003
+    momentum: 0.9
+    nesterov: True
+  svgd:
+    l2_reg: 0.0003
+    particle_count: 5
+    dataset_size: 50000
+
+---
+name: "Rank1"
+params:
+  model: "rank1"
+  members: 1
+  eval_while_train: False
+  lr: 0.05 # lr scheduler...
+  prior_std: 0.1
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003
+    momentum: 0.9
+    nesterov: True
+  rank1:
+    weight_decay: 0
+    l2_scale: 0.0003
+    components: 4
+    kl_rescaling: 1.0
+  bbb:
+    mc_samples: 2
+    kl_rescaling: 0.2
+    dataset_size: 50000
+
+---
+name: "SNGP"
+params:
+  model: "sngp"
+  members: 1
+  lr: 0.05 # lr scheduler...
+  eval_while_train: False
+  eval_samples: 1
+  base_optimizer:
+    lr: 0.05
+    weight_decay: 0.0003 # Uncertainty Baselines use L2 reg on CIFAR
+    momentum: 0.9
+    nesterov: True
+  spectral: 
+    norm_bound: 6.0
+  sngp:
+    train_batch_size: 128
+    dataset_size: 50000
+    num_random_features: 1024
+    num_gp_features: -1 # Don't project GP inputs
+    normalize_gp_features: False
+    ridge_penalty: 1.0
+    mean_field_factor: 20.0
+    feature_scale: 1.0 # Has a slightly different meaning than in the UB, cf https://github.com/google/edward2/blob/ccdb9bfb11fe713bc449f0e884b405f619f58059/edward2/tensorflow/layers/random_feature.py#L130
+    rff_init_std: 0.05
