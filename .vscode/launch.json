@@ -23,9 +23,10 @@
               "--nproc_per_node", "4", 
               "--master_addr","127.0.0.1", 
               "--master_port","29501", 
-              "main.py", 
+              "main_unc.py", 
               "--cfg", "configs/vssm/vmambav2_base_224.yaml", 
-              "--batch-size","64", 
+              "--batch-size","32
+              ", 
               "--data-path","${userHome}/dataset/imagenet/ILSVRC/Data/CLS-LOC",
               "--output", "/tmp",
               "--uncertainty", "bbb",

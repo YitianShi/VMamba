@@ -27,7 +27,7 @@ from .bnn.src.algos.dropout import patch_dropout, FixableDropout
 
 from .vmamba import *
 
-def build_vssmunc_model(config, is_pretrain=False, uncertainty="bbb"):
+def build_vssmunc_model(config, is_pretrain=False, uncertainty="bbb", config_unc=None):
     model_type = config.MODEL.TYPE
     if model_type in ["vssm"]:
         model = VSSMUnc(
@@ -64,6 +64,7 @@ def build_vssmunc_model(config, is_pretrain=False, uncertainty="bbb"):
             imgsize=config.DATA.IMG_SIZE,
             # ===================
             uncertainty=uncertainty,
+            sigma=config_unc["prior_std"],
         )
         return model
 
@@ -97,11 +98,9 @@ class SS2DUnc(nn.Module, mamba_init, SS2Dv0, SS2Dv2, SS2Dv3):
         # ======================
         uncertainty="bbb", # bbb, rank1, dropout_patch
         proj_only=False,
-        weight_prior=None,
-        bias_prior=None,
-        # ======================
         sigma=0.1,
-        components=5,
+        # ======================
+        components=4,
         **kwargs,    
     ):
         super().__init__()
@@ -121,22 +120,21 @@ class SS2DUnc(nn.Module, mamba_init, SS2Dv0, SS2Dv2, SS2Dv3):
             self.__initv2__(**kwargs)
 
         # bbb, rank1, dropout_patch ==============================
-        if weight_prior is None:
-            self.prior = GaussianPrior(0, sigma)
-            if bias_prior is None and uncertainty == "bbb":
-                self.bias_prior = GaussianPrior(0, sigma)
 
         if uncertainty == "bbb":
+            self.prior = GaussianPrior(0, sigma)
             self.kl = 0
             del self.x_proj_weight
             if not proj_only: 
                 make_module_bbb(self, prior=self.prior)
             self.x_proj = [
-            BBBLinear(self.d_inner, (self.dt_rank + d_state * 2), bias=bias, weight_prior=self.prior, bias_prior=self.bias_prior, components=components)
+            BBBLinear(self.d_inner, (self.dt_rank + d_state * 2), bias=bias, weight_prior=self.prior, bias_prior=self.prior, components=components)
             for _ in range(4)
             ]
             self.x_proj_weight = nn.ParameterList([self.x_proj[i].weight for i in range(4)])
             self.x_proj_bias = nn.ParameterList([self.x_proj[i].bias for i in range(4)]) if self.x_proj[0].bias is not None else None
+
+            del self.x_proj
             
         elif uncertainty == "rank1":
             self.comp=0
@@ -151,11 +149,10 @@ class SS2DUnc(nn.Module, mamba_init, SS2Dv0, SS2Dv2, SS2Dv3):
             self.x_proj_r = nn.ParameterList([nn.ParameterList([self.x_proj[i].r[t] for i in range(4)]) for t in range(components)])
             self.x_proj_bias = nn.Parameter(torch.stack([t.bias for t in self.x_proj], dim=0)) if self.x_proj[0].bias is not None else None
 
-        del self.x_proj
+            del self.x_proj
         self.uncertainty = uncertainty
-        
-        
 
+                
     def forward_corev2(
         self,
         x: torch.Tensor=None, 
@@ -170,7 +167,7 @@ class SS2DUnc(nn.Module, mamba_init, SS2Dv0, SS2Dv2, SS2Dv3):
         CrossMerge=CrossMerge,
         no_einsum=False, # replace einsum with linear or conv1d to raise throughput
         # ==============================
-        cascade2d=True,
+        cascade2d=False,
         **kwargs,
     ):
         dt_projs_weight = self.dt_projs_weight
@@ -223,12 +220,6 @@ class SS2DUnc(nn.Module, mamba_init, SS2Dv0, SS2Dv2, SS2Dv3):
                 x_dbl = self.sample_parameters(x_dbl_mean, x_dbl_std)
                 if x_proj_bias_mean is not None:
                     return x_dbl + self.sample_parameters(x_proj_bias_mean, x_proj_bias_std)
-            
-            # KL divergence
-            if self.training:
-                self.kl = self.prior.kl_divergence(x_proj_weight_mean, x_proj_weight_std)
-                if self.x_proj_bias is not None:
-                    self.kl += self.prior.kl_divergence(x_proj_bias_mean, x_proj_weight_std)
 
             return x_dbl
 
@@ -376,7 +367,7 @@ class SS2DUnc(nn.Module, mamba_init, SS2Dv0, SS2Dv2, SS2Dv3):
 
     @staticmethod
     def sample_parameters(mu, sigma):
-        epsilon = torch.empty(sigma.shape, device=mu.device).normal_(0, 1)
+        epsilon = torch.empty(sigma.shape, device=mu.device, dtype=mu.dtype).normal_(0, 1)
         return mu + sigma * epsilon
     
 # =====================================================
@@ -409,6 +400,7 @@ class VSSUncBlock(nn.Module):
         uncertainty="bbb",
         components=4,
         proj_only=True,
+        sigma=0.1,
         # =============================
         **kwargs,
     ):
@@ -445,6 +437,7 @@ class VSSUncBlock(nn.Module):
                 # ==========================
                 uncertainty=uncertainty,
                 components=components,
+                sigma=sigma,
                 proj_only = proj_only,
                 # ==========================
             )
@@ -513,6 +506,7 @@ class VSSMUnc(nn.Module):
         imgsize=224,
         # =========================
         uncertainty="bbb",
+        sigma=0.1,
         **kwargs,
     ):
         super().__init__()
@@ -591,6 +585,7 @@ class VSSMUnc(nn.Module):
                 # =================
                 uncertainty=uncertainty,
                 proj_only=True,
+                sigma=sigma
             ))
 
         self.classifier = nn.Sequential(OrderedDict(
@@ -602,6 +597,7 @@ class VSSMUnc(nn.Module):
         ))
 
         self.apply(self._init_weights)
+        self.uncertainty = uncertainty
 
     @staticmethod
     def _pos_embed(embed_dims, patch_size, img_size):
@@ -701,6 +697,7 @@ class VSSMUnc(nn.Module):
         # ===========================
         uncertainty = "bbb",
         proj_only = True,
+        sigma = 0.1,
         **kwargs,
     ):
         # if channel first, then Norm and Output are both channel_first
@@ -728,7 +725,9 @@ class VSSMUnc(nn.Module):
                 use_checkpoint=use_checkpoint,
                 uncertainty=uncertainty,
                 proj_only=proj_only,
+                sigma=sigma,
             ))
+        
         
         return nn.Sequential(OrderedDict(
             blocks=nn.Sequential(*blocks,),

@@ -117,7 +117,7 @@ params:
     momentum: 0.9
     nesterov: True
   bbb:
-    mc_samples: 2
+    mc_samples: 1
     kl_rescaling: 0.2
     dataset_size: 50000
 

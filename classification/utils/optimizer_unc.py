@@ -1,4 +1,5 @@
 from functools import partial
+import torch
 from torch import optim as optim
 
 
@@ -14,9 +15,8 @@ from models.bnn.src.algos.dropout import patch_dropout, FixableDropout
 from models.bnn.src.algos.kernel.sngp import SNGPWrapper, SNGPOptimizer
 from models.bnn.src.algos.kernel.base import spectrally_normalize_module
 from models.bnn.src.algos.util import reset_model_params
-from models.bnn.get_yaml import get_yaml
 
-def build_optimizer_unc(config, model, logger, uncertainty, **kwargs):
+def build_optimizer_unc(config, model, logger, **kwargs):
     """
     Build optimizer, set weight decay of normalization to 0 by default.
     """
@@ -42,8 +42,8 @@ def build_optimizer_unc(config, model, logger, uncertainty, **kwargs):
     #                          lr=config.TRAIN.BASE_LR, weight_decay=config.TRAIN.WEIGHT_DECAY)
     #else:
         #raise NotImplementedError
-    config_unc = get_yaml(uncertainty).get('params')
-    config_unc["base_optimizer"].update(lr = config.TRAIN.BASE_LR, weight_decay = config.TRAIN.WEIGHT_DECAY, momemtum = config.TRAIN.OPTIMIZER.MOMENTUM) 
+    
+    """ 
     if uncertainty == "bbb":
         prior = GaussianPrior(0, config_unc["prior_std"])
         optimizer = BBBOptimizer(parameters, optimizer, prior=prior, **config_unc[uncertainty])
@@ -58,7 +58,7 @@ def build_optimizer_unc(config, model, logger, uncertainty, **kwargs):
         optimizer = MAPOptimizer(parameters, optimizer)
     else:    
         raise NotImplementedError
-
+    """
     return optimizer
 
 
@@ -87,3 +87,26 @@ def check_keywords_in_name(name, keywords=()):
         if keyword in name:
             isin = True
     return isin
+
+
+def BBB_loss(outputs, targets, criterion, config_unc, kl_params, prior):
+        
+    mc_samples = config_unc["mc_samples"]
+    dataset_size = config_unc["dataset_size"]
+    kl_rescaling = config_unc["kl_rescaling"]
+
+    total_data_loss = torch.tensor(0.0, device=targets.device)
+    for output in outputs:
+       total_data_loss += criterion(output, targets)
+
+    # Collect KL loss & reg only once
+    total_kl_loss = torch.tensor(0.0, device=targets.device)
+    for param in kl_params:
+        total_kl_loss += param.get_parameter_kl(prior)
+
+    pi = kl_rescaling / dataset_size
+    # don't divide the kl loss by the mc sample count as we have only been collection it once
+    loss = pi * total_kl_loss + total_data_loss / mc_samples
+
+    return loss
+    

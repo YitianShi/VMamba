@@ -27,7 +27,7 @@ from config import get_config
 from models import build_model
 from data import build_loader
 from utils.lr_scheduler import build_scheduler
-from utils.optimizer_unc import build_optimizer_unc
+from utils.optimizer_unc import build_optimizer_unc, BBB_loss
 from utils.optimizer import build_optimizer
 from utils.logger import create_logger
 from utils.utils import  NativeScalerWithGradNormCount, auto_resume_helper, reduce_tensor
@@ -38,6 +38,8 @@ from fvcore.nn import FlopCountAnalysis, flop_count_str, flop_count
 from timm.utils import ModelEma as ModelEma
 
 from models.vmamba_unc import build_vssmunc_model
+from models.bnn.get_yaml import get_yaml
+from models.bnn.src.algos.bbb import GaussianPrior
 
 if torch.multiprocessing.get_start_method() != "spawn":
     print(f"||{torch.multiprocessing.get_start_method()}||", end="")
@@ -123,12 +125,16 @@ def parse_option():
 
 def main(config, args):
     dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)
-
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
+
+    config_unc = get_yaml(args.uncertainty).get('params')
+    config_unc["base_optimizer"].update(lr = config.TRAIN.BASE_LR, weight_decay = config.TRAIN.WEIGHT_DECAY, momemtum = config.TRAIN.OPTIMIZER.MOMENTUM)
+    config_unc[args.uncertainty].update(dataset_size = len(data_loader_train.dataset))
+
     if args.uncertainty == "map":
         model = build_model(config)
     else:
-        model = build_vssmunc_model(config, uncertainty=args.uncertainty)
+        model = build_vssmunc_model(config, uncertainty=args.uncertainty, config_unc=config_unc)
 
     if dist.get_rank() == 0:
         if hasattr(model, 'flops'):
@@ -153,10 +159,8 @@ def main(config, args):
             resume='')
         print("Using EMA with decay = %.8f" % args.model_ema_decay)
 
-    if args.uncertainty == "map":
-        optimizer = build_optimizer(config, model, logger)
-    else:
-        optimizer = build_optimizer_unc(config, model, logger, args.uncertainty)
+    optimizer = build_optimizer(config, model, logger)
+  
     model = torch.nn.parallel.DistributedDataParallel(model, broadcast_buffers=False)
     loss_scaler = NativeScalerWithGradNormCount()
 
@@ -225,7 +229,8 @@ def main(config, args):
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
         data_loader_train.sampler.set_epoch(epoch)
 
-        train_one_epoch(config, model, criterion, data_loader_train, optimizer, epoch, mixup_fn, lr_scheduler, loss_scaler, model_ema)
+        train_one_epoch(config, model, criterion, data_loader_train, optimizer, epoch, 
+                        mixup_fn, lr_scheduler, loss_scaler, model_ema, config_unc = config_unc)
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint_ema(config, epoch, model_without_ddp, max_accuracy, optimizer, lr_scheduler, loss_scaler, logger, model_ema, max_accuracy_ema)
 
@@ -245,7 +250,7 @@ def main(config, args):
     logger.info('Training time {}'.format(total_time_str))
 
 
-def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mixup_fn, lr_scheduler, loss_scaler, model_ema=None, model_time_warmup=50):
+def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mixup_fn, lr_scheduler, loss_scaler, model_ema=None, model_time_warmup=50, config_unc=None):
     model.train()
     optimizer.zero_grad()
 
@@ -259,6 +264,11 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
 
     start = time.time()
     end = time.time()
+        
+    kl_params = [name for name in model.parameters() if hasattr(name, "get_parameter_kl")]
+    prior = GaussianPrior(0, config_unc["prior_std"])
+    mc_samples = config_unc["bbb"]["mc_samples"]
+
     for idx, (samples, targets) in enumerate(data_loader):
         torch.cuda.reset_peak_memory_stats()
         samples = samples.cuda(non_blocking=True)
@@ -269,13 +279,18 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
 
         data_time.update(time.time() - end)
 
+        
+        outputs = []
         with torch.cuda.amp.autocast(enabled=config.AMP_ENABLE):
-            outputs = model(samples)
-        loss = criterion(outputs, targets)
+            for _ in range(mc_samples):
+                outputs.append(model(samples))
+        
+        loss = BBB_loss(outputs, targets, criterion, config_unc["bbb"], kl_params, prior)
         loss = loss / config.TRAIN.ACCUMULATION_STEPS
-
+     
         # this attribute is added by timm on one optimizer (adahessian)
         is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
+
         grad_norm = loss_scaler(loss, optimizer, clip_grad=config.TRAIN.CLIP_GRAD,
                                 parameters=model.parameters(), create_graph=is_second_order,
                                 update_grad=(idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0)
