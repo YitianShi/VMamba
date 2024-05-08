@@ -16,9 +16,10 @@ from fvcore.nn import FlopCountAnalysis, flop_count_str, flop_count, parameter_c
 from torchvision.models import VisionTransformer
 
 DropPath.__repr__ = lambda self: f"timm.DropPath({self.drop_prob})"
-torch.backends.cudnn.enabled = True
-torch.backends.cudnn.benchmark = True
-torch.backends.cudnn.deterministic = True
+# train speed is slower after enabling this opts.
+# torch.backends.cudnn.enabled = True
+# torch.backends.cudnn.benchmark = True
+# torch.backends.cudnn.deterministic = True
 
 try:
     from .csm_triton import CrossScanTriton, CrossMergeTriton, CrossScanTriton1b1, getCSM
@@ -1484,8 +1485,8 @@ class Backbone_VSSM(VSSM):
                 norm_layer = getattr(self, f'outnorm{i}')
                 out = norm_layer(o)
                 if not self.channel_first:
-                    out = out.permute(0, 3, 1, 2).contiguous()
-                outs.append(out)
+                    out = out.permute(0, 3, 1, 2)
+                outs.append(out.contiguous())
 
         if len(self.out_indices) == 0:
             return x
