@@ -1,14 +1,14 @@
 _base_ = [
-    '../vssm/upernet_swin_4xb4-160k_ade20k-640x640_small.py'
+    '../swin/swin-tiny-patch4-window7-in1k-pre_upernet_8xb2-160k_ade20k-512x512.py'
 ]
 model = dict(
     backbone=dict(
         type='MM_VSSM',
         out_indices=(0, 1, 2, 3),
         pretrained="",
-        # copied from classification/configs/vssm/vssm_small_224.yaml
+        # copied from classification/configs/vssm/vssm_tiny_224.yaml
         dims=96,
-        depths=(2, 2, 15, 2),
+        depths=(2, 2, 5, 2),
         ssm_d_state=1,
         ssm_dt_rank="auto",
         ssm_ratio=2.0,
@@ -18,7 +18,7 @@ model = dict(
         mlp_ratio=4.0,
         downsample_version="v3",
         patchembed_version="v2",
-        drop_path_rate=0.3,
+        drop_path_rate=0.2,
         norm_layer="ln2d",
     ),)
 # train_dataloader = dict(batch_size=4) # as gpus=4

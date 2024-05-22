@@ -623,6 +623,7 @@ class SS2Dv2:
                 return ys
             
             As = -torch.exp(A_logs.to(torch.float)).view(4, -1, N)
+            x = F.layer_norm(x.permute(0, 2, 3, 1), normalized_shape=(int(x.shape[1]),)).permute(0, 3, 1, 2).contiguous() # added0510 to avoid nan
             y_row = scan_rowcol(
                 x,
                 proj_weight = x_proj_weight.view(4, -1, D)[:2].contiguous(), 
@@ -632,7 +633,8 @@ class SS2Dv2:
                 _As = As[:2].contiguous().view(-1, N),
                 _Ds = Ds.view(4, -1)[:2].contiguous().view(-1),
                 width=True,
-            ).view(B, H, 2, -1, W).sum(dim=2).permute(0, 2, 1, 3)
+            ).view(B, H, 2, -1, W).sum(dim=2).permute(0, 2, 1, 3) # (B,C,H,W)
+            y_row = F.layer_norm(y_row.permute(0, 2, 3, 1), normalized_shape=(int(y_row.shape[1]),)).permute(0, 3, 1, 2).contiguous() # added0510 to avoid nan
             y_col = scan_rowcol(
                 y_row,
                 proj_weight = x_proj_weight.view(4, -1, D)[2:].contiguous().to(y_row.dtype), 
@@ -678,7 +680,7 @@ class SS2Dv2:
                 setattr(self, "__data__", dict(
                     A_logs=A_logs, Bs=Bs, Cs=Cs, Ds=Ds,
                     us=xs, dts=dts, delta_bias=delta_bias,
-                    ys=ys, y=y,
+                    ys=ys, y=y, H=H, W=W,
                 ))
 
         y = y.view(B, -1, H, W)
@@ -705,7 +707,6 @@ class SS2Dv2:
             y = y * z
         out = self.dropout(self.out_proj(y))
         return out
-
 
 # support: xv1a,xv2a,xv3a; 
 # postfix: _cpos;_ocov;_ocov2;_ca,_ca1;_act;_mul;_onsigmoid,_onsoftmax,_ondwconv3,_onnone;
