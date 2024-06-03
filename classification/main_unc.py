@@ -333,7 +333,7 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
 
 
 @torch.no_grad()
-def validate(config, data_loader, model):
+def validate(config, data_loader, model, times=5):
     criterion = torch.nn.CrossEntropyLoss()
     model.eval()
 
@@ -348,8 +348,10 @@ def validate(config, data_loader, model):
         target = target.cuda(non_blocking=True)
 
         # compute output
+        output = 0
         with torch.cuda.amp.autocast(enabled=config.AMP_ENABLE):
-            output = model(images)
+            for i in range(times):
+                output += model(images) / times
 
         # measure accuracy and record loss
         loss = criterion(output, target)
