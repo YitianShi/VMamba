@@ -1,10 +1,11 @@
-import os
-from utils import visualize, EffectiveReceiptiveField, BuildModels
-simpnorm = EffectiveReceiptiveField.simpnorm
-
-HOME = os.environ["HOME"].rstrip("/")
-
+# this is only a script !
 if __name__ == "__main__":
+    import os
+    from utils import visualize, EffectiveReceiptiveField, BuildModels
+    simpnorm = EffectiveReceiptiveField.simpnorm
+
+    HOME = os.environ["HOME"].rstrip("/")
+
     showpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "./show").rstrip("/")
     data_path = "/media/Disk1/Dataset/ImageNet_ILSVRC2012"
     
@@ -123,7 +124,7 @@ if __name__ == "__main__":
         visualize.visualize_snsmaps(results_before + results_after, savefig=f"{showpath}/erf_scanmethod.jpg", rows=2, sticks=False, figsize=(10, 10.75), cmap='RdYlGn')
 
     # erf for training stage for tv2
-    if True:
+    if False:
         results_before = [
             (EffectiveReceiptiveField.get_input_grad_avg(BuildModels.build_vmamba(only_backbone=True, scale="tv2"), size=1024, data_path=data_path, norms=simpnorm), ""),
             (EffectiveReceiptiveField.get_input_grad_avg(BuildModels.build_vmamba(with_ckpt=True, only_backbone=True, scale="flex", 
@@ -155,6 +156,28 @@ if __name__ == "__main__":
         ]
         visualize.visualize_snsmaps(results_before, savefig=f"{showpath}/erf_trainprocess.jpg", rows=1, sticks=False, figsize=(10, 10.75), cmap='RdYlGn')
 
+    # erf for vim
+    if True:
+        from analyze_for_vim import ExtraDev
+        results_before = [
+            (EffectiveReceiptiveField.get_input_grad_avg(ExtraDev.build_vim_for_throughput(only_backbone=True, size=1024), size=1024, data_path=data_path, norms=simpnorm), ""),
+        ]
+        results_after = [
+            (EffectiveReceiptiveField.get_input_grad_avg(ExtraDev.build_vim_for_throughput(with_ckpt=True, only_backbone=True, size=1024), size=1024, data_path=data_path, norms=simpnorm), ""),
+        ]
+        visualize.visualize_snsmaps(results_before + results_after, savefig=f"{showpath}/erf_vimmethods.jpg", rows=2, sticks=False, figsize=(10, 10.75), cmap='RdYlGn')
+
+    # erf for s4nd
+    if True:
+        results_before = [
+            (EffectiveReceiptiveField.get_input_grad_avg(BuildModels.build_vmamba(only_backbone=True, scale="tv2"), size=1024, data_path=data_path, norms=simpnorm), ""),
+            (EffectiveReceiptiveField.get_input_grad_avg(BuildModels.build_s4nd(only_backbone=True, scale="ctiny"), size=1024, data_path=data_path, norms=simpnorm), ""),
+        ]
+        results_after = [
+            (EffectiveReceiptiveField.get_input_grad_avg(BuildModels.build_vmamba(with_ckpt=True, only_backbone=True, scale="tv2"), size=1024, data_path=data_path, norms=simpnorm), ""),
+            # (after_s4nd, ""),
+        ]
+        visualize.visualize_snsmaps(results_before + results_after, savefig=f"{showpath}/erf_s4ndmethods.jpg", rows=2, sticks=False, figsize=(10, 10.75), cmap='RdYlGn')
 
 
 

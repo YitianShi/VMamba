@@ -40,18 +40,6 @@ if torch.multiprocessing.get_start_method() != "spawn":
     print(f"||{torch.multiprocessing.get_start_method()}||", end="")
     torch.multiprocessing.set_start_method("spawn", force=True)
 
-
-def import_abspy(name="models", path="classification/"):
-    import sys
-    import importlib
-    path = os.path.abspath(path)
-    assert os.path.isdir(path)
-    sys.path.insert(0, path)
-    module = importlib.import_module(name)
-    sys.path.pop(0)
-    return module
-
-
 def str2bool(v):
     """
     Converts string to bool type; enables command line 
@@ -69,7 +57,7 @@ def str2bool(v):
 
 def parse_option():
     parser = argparse.ArgumentParser('Swin Transformer training and evaluation script', add_help=False)
-    parser.add_argument('--cfg', type=str, required=True, metavar="FILE", help='path to config file', )
+    parser.add_argument('--cfg', type=str, metavar="FILE", default="", help='path to config file', )
     parser.add_argument(
         "--opts",
         help="Modify config options by adding 'KEY VALUE' pairs. ",
@@ -130,7 +118,8 @@ def main(config, args):
             logger.info(f"number of GFLOPs: {flops / 1e9}")
         else:
             logger.info(flop_count_str(FlopCountAnalysis(model, (dataset_val[0][0][None],))))
-
+    torch.cuda.empty_cache()
+    dist.barrier()
     model.cuda()
     model_without_ddp = model
 
